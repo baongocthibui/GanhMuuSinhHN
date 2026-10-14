@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gánh Mưu Sinh Hà Nội</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f7f8f4;--fg:#1d2a24;--mut:#5d6b64;--line:#d9dfd6;--acc:#2f6b4f;--accfg:#fff;--warn:#b26a00;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#161d19;--fg:#e8eee9;--mut:#9aa8a0;--line:#2b3731;--acc:#6fbf97;--accfg:#10231a;--warn:#e0a040;--err:#f2b8b5}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font:15px/1.5 "Be Vietnam Pro",system-ui,sans-serif}
+header{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+h1{font-size:18px;margin:0}
+.sub{color:var(--mut);font-size:13px;margin:0}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto;align-items:center}
+input,select,textarea,button{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+button.pri{background:var(--acc);color:var(--accfg);border-color:var(--acc);font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+main{flex:1;position:relative;min-height:0}
+#map{position:absolute;inset:0}
+#panel{position:absolute;z-index:1000;right:0;bottom:0;top:auto;width:min(380px,100%);max-height:85%;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px 10px 0 0;padding:14px;display:none}
+#panel.open{display:block}
+#panel label{display:block;font-size:13px;color:var(--mut);margin:10px 0 3px}
+#panel input[type=text],#panel textarea{width:100%}
+#panel .row{display:flex;gap:8px;align-items:flex-start;margin-top:10px}
+#panel .row input{margin-top:4px}
+#msg{margin-top:10px;font-size:13px}
+.err{color:var(--err)}.ok{color:var(--acc)}.warn{color:var(--warn)}
+.pop h3{margin:0 0 4px;font-size:15px}.pop p{margin:2px 0}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--bg);color:var(--fg)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Gánh Mưu Sinh Hà Nội</h1>
+    <p class="sub">Gánh hàng của người lớn tuổi, hoàn cảnh khó khăn. Ghé mua giúp một món.</p>
+  </div>
+  <div class="ctl">
+    <span id="who" class="sub"></span>
+    <div id="gbtn"></div>
+    <button id="openForm" class="pri" style="display:none">Báo cáo gánh hàng</button>
+    <button id="logout" style="display:none">Đăng xuất</button>
+  </div>
+</header>
+<main>
+  <div id="map"></div>
+  <section id="panel" aria-label="Báo cáo gánh hàng">
+    <b>Báo cáo một gánh hàng</b>
+    <p class="sub">Hãy đứng ngay cạnh gánh hàng rồi bấm lấy vị trí, hoặc nhập địa chỉ bên dưới.</p>
+    <button id="locate" class="pri" type="button">📍 Lấy vị trí của tôi (GPS)</button>
+    <div id="locInfo" class="sub" style="margin-top:6px"></div>
+    <label for="dia_chi">Địa chỉ (nhập tay nếu không bật được GPS)</label><input id="dia_chi" type="text" maxlength="150" placeholder="Ví dụ: 15 Hàng Buồm, Hoàn Kiếm, Hà Nội">
+    <label for="ten">Tên gánh (ví dụ: Chè bà Mai)</label><input id="ten" type="text" maxlength="80">
+    <label for="mat">Món bán</label><input id="mat" type="text" maxlength="120">
+    <label for="gio">Giờ bán (không bắt buộc)</label><input id="gio" type="text" maxlength="40">
+    <label for="note">Ghi chú (không bắt buộc, đừng ghi số điện thoại)</label><textarea id="note" rows="2" maxlength="300"></textarea>
+
+    <label>Ảnh gánh hàng (không bắt buộc)</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
+      <input id="imgInput" type="file" accept="image/*" style="display:none">
+      <button id="btnUpload" type="button" style="cursor:pointer;padding:6px 10px;font-size:13px">📷 Chọn ảnh chụp</button>
+      <span id="imgStatus" class="sub" style="font-size:12px">Chưa chọn ảnh</span>
+    </div>
+    <div id="imgPreviewWrap" style="display:none;margin-top:8px">
+      <img id="imgPreview" src="" alt="Xem trước ảnh" style="width:100%;max-height:140px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block">
+      <button id="btnRemoveImg" type="button" style="margin-top:4px;padding:2px 4px;font-size:12px;color:var(--err);cursor:pointer;background:none;border:none">✕ Xoá ảnh</button>
+    </div>
+
+    <div class="row"><input id="consent" type="checkbox"><label for="consent" style="margin:0;color:var(--fg)">Người bán đã đồng ý để đăng thông tin và vị trí gánh hàng lên bản đồ.</label></div>
+    <div class="row"><button id="send" class="pri" disabled>Gửi báo cáo</button><button id="close" type="button">Đóng</button></div>
+    <div id="msg" role="status"></div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = (url, opt = {}) => fetch(url, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opt });
+
+const map = L.map("map").setView([21.0285, 105.8542], 12);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+let me = null, pos = null, you = null;
+
+const markersLayer = L.layerGroup().addTo(map);
+
+function renderPopupContent(r) {
+  const lat = +r.lat, lng = +r.lng;
+  const d = Math.floor((Date.now() - Date.parse(r.xac_minh)) / 864e5);
+  const stale = isNaN(d) || d > 90;
+  const isPending = !!r.cho_duyet;
+
+  const gmapDirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  const gmapSearchUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+  return `<div class="pop">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      ${isPending 
+        ? '<span style="background:var(--warn);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">⏳ Đang chờ duyệt (Gánh bạn vừa gửi)</span>'
+        : `<span class="${stale ? 'warn' : 'ok'}" style="font-size:12px;font-weight:600">${stale ? '⚠️ Đã lâu chưa kiểm tra' : '✅ Đã xác minh'}: ${esc(r.xac_minh)}</span>`}
+    </div>
+    <h3 style="margin:0 0 4px 0;font-size:16px">${esc(r.ten)}</h3>
+    ${r.image ? `<img src="${r.image}" alt="${esc(r.ten)}" style="width:100%;max-height:160px;object-fit:cover;border-radius:6px;margin:6px 0;display:block">` : ""}
+    <p><b>Món bán:</b> ${esc(r.mat_hang)}</p>
+    <p><b>Địa chỉ:</b> ${esc(r.dia_chi)}${r.quan ? ", " + esc(r.quan) : ""}</p>
+    ${r.gio_ban ? `<p><b>Giờ bán:</b> ${esc(r.gio_ban)}</p>` : ""}
+    ${r.ghi_chu ? `<p><b>Ghi chú:</b> ${esc(r.ghi_chu)}</p>` : ""}
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:12px;font-size:13px">
+      <a href="${gmapDirUrl}" target="_blank" rel="noopener" style="color:var(--acc);font-weight:600;text-decoration:none">🧭 Chỉ đường Google Maps</a>
+      <a href="${gmapSearchUrl}" target="_blank" rel="noopener" style="color:var(--mut);text-decoration:none">📍 Mở Google Maps</a>
+    </div>
+  </div>`;
+}
+
+function addPointMarker(r, shouldOpenPopup = false) {
+  const lat = +r.lat, lng = +r.lng;
+  if (isNaN(lat) || isNaN(lng)) return null;
+
+  let marker;
+  if (r.cho_duyet) {
+    marker = L.circleMarker([lat, lng], {
+      radius: 10,
+      fillColor: "#e0a040",
+      color: "#b26a00",
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.95
+    });
+  } else {
+    marker = L.marker([lat, lng]);
+  }
+
+  marker.bindPopup(renderPopupContent(r));
+  marker.addTo(markersLayer);
+
+  if (shouldOpenPopup) {
+    map.flyTo([lat, lng], 17, { animate: true, duration: 1 });
+    setTimeout(() => marker.openPopup(), 500);
+  }
+  return marker;
+}
+
+async function loadPoints() {
+  try {
+    const pts = await (await api("/api/points")).json();
+    markersLayer.clearLayers();
+    pts.forEach(r => addPointMarker(r, false));
+  } catch { /* bản đồ vẫn dùng được, chỉ không có điểm */ }
+}
+
+function setUser(u) {
+  me = u;
+  $("who").textContent = u ? u.email : "";
+  $("gbtn").style.display = u ? "none" : "";
+  $("openForm").style.display = $("logout").style.display = u ? "" : "none";
+  if (!u) $("panel").classList.remove("open");
+  loadPoints();
+}
+
+async function init() {
+  const cfg = await (await api("/api/config")).json();
+  const r = await api("/api/me");
+  setUser(r.ok ? await r.json() : null);
+  const start = () => {
+    if (!window.google || !google.accounts) return setTimeout(start, 200);
+    google.accounts.id.initialize({
+      client_id: cfg.clientId,
+      callback: async resp => {
+        const l = await api("/api/login", { method: "POST", body: JSON.stringify({ credential: resp.credential }) });
+        setUser(l.ok ? await l.json() : null);
+      },
+    });
+    google.accounts.id.renderButton($("gbtn"), { theme: "outline", size: "medium", locale: "vi", text: "signin_with" });
+  };
+  start();
+  loadPoints();
+}
+
+function validateForm() {
+  const hasLoc = !!pos || $("dia_chi").value.trim().length >= 3;
+  $("send").disabled = !hasLoc;
+}
+
+$("dia_chi").oninput = validateForm;
+
+map.on("click", e => {
+  if ($("panel").classList.contains("open")) {
+    pos = { lat: e.latlng.lat, lng: e.latlng.lng };
+    if (you) map.removeLayer(you);
+    you = L.circleMarker([pos.lat, pos.lng], { radius: 8, color: "#2f6b4f" }).addTo(map);
+    $("locInfo").innerHTML = `Đã chọn điểm trên bản đồ (${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}).`;
+    validateForm();
+  }
+});
+
+$("openForm").onclick = () => { $("panel").classList.add("open"); validateForm(); };
+$("close").onclick = () => $("panel").classList.remove("open");
+$("logout").onclick = async () => { await api("/api/logout", { method: "POST" }); setUser(null); };
+
+$("locate").onclick = () => {
+  const info = $("locInfo");
+  if (!navigator.geolocation) { info.innerHTML = '<span class="err">Trình duyệt không hỗ trợ định vị.</span>'; return; }
+  info.textContent = "Đang lấy vị trí…";
+  navigator.geolocation.getCurrentPosition(p => {
+    pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+    const acc = Math.round(p.coords.accuracy);
+    info.innerHTML = `Đã lấy vị trí, sai số khoảng ${acc} m.` + (acc > 50 ? ' <span class="warn">Sai số lớn, hãy ra chỗ thoáng hoặc nhập địa chỉ chữ.</span>' : "");
+    if (you) map.removeLayer(you);
+    you = L.circleMarker([pos.lat, pos.lng], { radius: 8 }).addTo(map);
+    map.setView([pos.lat, pos.lng], 17);
+    validateForm();
+  }, err => {
+    info.innerHTML = '<span class="err">' + (err.code === 1 ? "Chưa cấp quyền vị trí. Bạn có thể nhập địa chỉ chữ vào ô bên dưới." : "Không lấy được vị trí GPS. Hãy nhập địa chỉ vào ô bên dưới.") + "</span>";
+    validateForm();
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+};
+
+let uploadedImageBase64 = "";
+
+$("btnUpload").onclick = () => $("imgInput").click();
+
+$("imgInput").onchange = e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  $("imgStatus").textContent = "Đang nén ảnh…";
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const maxDim = 500;
+      let w = img.width, h = img.height;
+      if (w > h && w > maxDim) {
+        h = Math.round((h * maxDim) / w);
+        w = maxDim;
+      } else if (h > maxDim) {
+        w = Math.round((w * maxDim) / h);
+        h = maxDim;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      uploadedImageBase64 = canvas.toDataURL("image/jpeg", 0.65);
+      $("imgPreview").src = uploadedImageBase64;
+      $("imgPreviewWrap").style.display = "block";
+      const kb = Math.round(uploadedImageBase64.length * 0.75 / 1024);
+      $("imgStatus").textContent = `Đã chọn ảnh (${kb} KB)`;
+    };
+    img.src = evt.target.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+$("btnRemoveImg").onclick = () => {
+  uploadedImageBase64 = "";
+  $("imgInput").value = "";
+  $("imgPreview").src = "";
+  $("imgPreviewWrap").style.display = "none";
+  $("imgStatus").textContent = "Chưa chọn ảnh";
+};
+
+$("send").onclick = async () => {
+  const msg = $("msg"); msg.className = ""; msg.textContent = "Đang gửi…";
+  $("send").disabled = true;
+  const sentPos = pos;
+  const sentForm = {
+    ten: $("ten").value,
+    mat_hang: $("mat").value,
+    gio_ban: $("gio").value,
+    ghi_chu: $("note").value,
+    dia_chi: $("dia_chi").value.trim(),
+    image: uploadedImageBase64
+  };
+  const r = await api("/api/report", { method: "POST", body: JSON.stringify({
+    lat: sentPos && sentPos.lat,
+    lng: sentPos && sentPos.lng,
+    dia_chi: sentForm.dia_chi,
+    ten: sentForm.ten,
+    mat_hang: sentForm.mat_hang,
+    gio_ban: sentForm.gio_ban,
+    ghi_chu: sentForm.ghi_chu,
+    image: sentForm.image,
+    consent: $("consent").checked
+  }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) {
+    msg.className = "ok";
+    msg.textContent = "Đã gửi thành công! Gánh hàng đã được ghim hiển thị ngay trên bản đồ.";
+    ["ten", "mat", "gio", "note", "dia_chi"].forEach(i => $(i).value = "");
+    $("consent").checked = false;
+    uploadedImageBase64 = "";
+    $("imgInput").value = "";
+    $("imgPreview").src = "";
+    $("imgPreviewWrap").style.display = "none";
+    $("imgStatus").textContent = "Chưa chọn ảnh";
+
+    if (you) { map.removeLayer(you); you = null; }
+    pos = null;
+    $("locInfo").textContent = "";
+
+    // Ghim ngay gánh hàng vừa đăng ký lên bản đồ và mở popup thông tin
+    const markerData = {
+      ...sentForm,
+      ...j,
+      lat: j.lat || (sentPos && sentPos.lat),
+      lng: j.lng || (sentPos && sentPos.lng),
+      xac_minh: new Date().toISOString().slice(0, 10),
+      cho_duyet: true
+    };
+    if (markerData.lat && markerData.lng) {
+      addPointMarker(markerData, true);
+    }
+    validateForm();
+  } else {
+    msg.className = "err";
+    msg.textContent = r.status === 401 ? "Phiên đăng nhập hết hạn, hãy đăng nhập lại." : (j.error || "Gửi không thành công.");
+    validateForm();
+    if (r.status === 401) setUser(null);
+  }
+};
+init();
+</script>
+</body>
+</html>
